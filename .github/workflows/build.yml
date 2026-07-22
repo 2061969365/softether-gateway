@@ -77,16 +77,15 @@ jobs:
           fi
 
       - name: Verify 443 and 992 are NOT listening
-        run: {
-          echo "===== 检查443和992已删除 =====";
+        run: |
+          echo "===== 检查443和992已删除 ====="
           if docker exec softether-test sh -c "cat /proc/net/tcp" | grep -i "01BB\|03E0"; then
-            echo "❌ 443或992端口仍在监听";
-            docker exec softether-test sh -c "cat /proc/net/tcp";
-            exit 1;
+            echo "❌ 443或992端口仍在监听"
+            docker exec softether-test sh -c "cat /proc/net/tcp"
+            exit 1
           else
-            echo "✅ 443和992已成功删除";
+            echo "✅ 443和992已成功删除"
           fi
-        }
 
       - name: Verify Virtual Hub and user exist
         run: |
