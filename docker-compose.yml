@@ -1,0 +1,30 @@
+services:
+  softether:
+    image: ghcr.io/2061969365/softether-gateway:latest
+    container_name: softether
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    environment:
+      # --- 认证 ---
+      - PSK=${PSK}
+      - USERS=${USER_NAME}:${USER_PASSWORD}
+      - SPW=${SERVER_PASSWORD}
+      - HPW=${HUB_PASSWORD}
+
+      # --- 服务器级命令（分号分隔，首次启动时执行） ---
+      # 删掉443和992监听器，创建5555（给3x-ui让路）
+      - VPNCMD_SERVER=ListenerDelete 443;ListenerDelete 992;ListenerCreate 5555
+
+      # --- Hub级命令（分号分隔，首次启动时执行） ---
+      # 配置DHCP：不推默认网关(0.0.0.0)，防止客户端路由劫持
+      - VPNCMD_HUB=DhcpSet /START:192.168.30.10 /END:192.168.30.200 /MASK:255.255.255.0 /EXPIRE:7200 /DNS:8.8.8.8 /DNS2:8.8.4.4 /DOMAIN:local /GW:0.0.0.0 /LOG:no /PUSHROUTE:
+
+    volumes:
+      - ./data:/usr/vpnserver
+    healthcheck:
+      test: ["CMD", "vpncmd", "localhost", "/SERVER", "/PASSWORD:${SERVER_PASSWORD}", "/CMD", "ServerStatusGet"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
