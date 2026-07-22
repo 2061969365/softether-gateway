@@ -65,13 +65,39 @@ jobs:
           echo "===== 容器日志 ====="
           docker logs softether-test 2>&1
 
-      - name: Verify ports
+      - name: Configure ports via vpncmd and verify
         run: |
-          echo "===== 检查监听端口 ====="
-          LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
-          echo "当前LISTEN端口: $LISTEN_PORTS"
+          echo "===== 等待 vpnserver 就绪后配置端口 ====="
+          for i in $(seq 1 30); do
+            if docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerList >/dev/null 2>&1; then
+              echo "✅ vpnserver 就绪（${i}秒）"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "❌ vpnserver 30秒未就绪"
+              exit 1
+            fi
+            sleep 1
+          done
 
-          # 5555 必须在（新监听器）
+          echo "===== 当前监听器 ====="
+          docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerList
+
+          echo "===== 删除 992 监听器 ====="
+          docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerDelete 992 || echo "⚠️ 删除 992 失败"
+
+          echo "===== 创建 5555 监听器 ====="
+          docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerCreate 5555 || echo "⚠️ 创建 5555 失败"
+
+          echo "===== 配置后监听器 ====="
+          docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerList
+
+          echo "===== 验证监听端口 ====="
+          LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
+          echo "当前LISTEN端口:"
+          echo "$LISTEN_PORTS"
+
+          # 5555 必须在
           if echo "$LISTEN_PORTS" | grep -q "^15B3$"; then
             echo "✅ 端口5555(0x15B3)已监听"
           else
@@ -87,7 +113,7 @@ jobs:
             echo "✅ 端口992已删除"
           fi
 
-          # 443 不能存在
+          # 443 不能存在（VPNCMD_SERVER 删掉的）
           if echo "$LISTEN_PORTS" | grep -q "^01BB$"; then
             echo "❌ 端口443(0x01BB)仍在LISTEN状态"
             exit 1
