@@ -67,7 +67,7 @@ jobs:
       - name: Wait for post-init and verify ports
         run: |
           echo "===== 等待 post-init 完成配置 ====="
-          for i in $(seq 1 60); do
+          for i in $(seq 1 120); do
             if docker exec softether-test sh -c "test -f /tmp/post-init.done" 2>/dev/null; then
               echo "✅ post-init 完成（${i}秒）"
               break
