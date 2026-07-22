@@ -118,7 +118,6 @@ jobs:
         run: |
           echo "===== 检查Virtual Hub ====="
           timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /CSV /PASSWORD:serverpass123 /CMD HubList
-          timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /CSV /PASSWORD:serverpass123 /CMD EnumHub
 
           echo "===== 检查用户 ====="
           timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /CSV /HUB:DEFAULT /PASSWORD:serverpass123 /CMD UserList
