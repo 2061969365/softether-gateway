@@ -1,16 +1,17 @@
 #!/bin/bash
 # post-init.sh — 后台完整初始化 SoftEther VPN Server
 #
-# 由于 entrypoint 的 ExtOptionSet 导致 vpnserver 短暂重启，
-# 用户创建可能失败，由本脚本补完剩余配置。
-# 密码设置因 VPNCMD_SERVER 已移除而正常工作，使用端口 5555 连接。
+# 注意：
+# - vpncmd 必须加 /CSV 参数，否则某些命令会进入交互模式 hang 住
+# - 用 localhost（不加端口）优先走 IPC Unix 套接字，无需 TCP 端口
+# - 使用 timeout -s KILL 确保子进程被强制杀死
 
 (
   echo "[post-init] 等待 vpnserver 就绪..."
 
-  # 第 1 步：等待 vpnserver 启动（用端口 5555 + 密码连接）
+  # 第 1 步：等待 vpnserver 启动（IPC 连接，不加端口）
   for i in $(seq 1 30); do
-    if timeout 5 vpncmd localhost:5555 /SERVER /PASSWORD:"${SPW}" /CMD ListenerList >/dev/null 2>&1; then
+    if timeout -s KILL 10 vpncmd localhost /SERVER /CSV /CMD ListenerList >/dev/null 2>&1; then
       echo "[post-init] vpnserver 就绪（${i}秒）"
       break
     fi
@@ -21,33 +22,40 @@
     sleep 1
   done
 
+  # 清理残留的 vpncmd 进程
+  pkill -9 -x vpncmd 2>/dev/null || true
+
   # 第 2 步：删 443/992 监听器（给 3x-ui 让路）
   echo "[post-init] 删除端口 443..."
-  timeout 5 vpncmd localhost:5555 /SERVER /PASSWORD:"${SPW}" /CMD ListenerDelete 443
+  timeout -s KILL 10 vpncmd localhost /SERVER /CSV /PASSWORD:"${SPW}" /CMD ListenerDelete 443
 
   echo "[post-init] 删除端口 992..."
-  timeout 5 vpncmd localhost:5555 /SERVER /PASSWORD:"${SPW}" /CMD ListenerDelete 992
+  timeout -s KILL 10 vpncmd localhost /SERVER /CSV /PASSWORD:"${SPW}" /CMD ListenerDelete 992
 
   # 第 3 步：创建用户（USERS 格式：user1:pass1;user2:pass2）
-  # entrypoint 的 ExtOptionSet 会导致用户创建失败，这里补建
   if [ -n "${USERS}" ]; then
     echo "[post-init] 创建用户..."
     IFS=';' read -ra USER_LIST <<< "${USERS}"
     for user_entry in "${USER_LIST[@]}"; do
       IFS=':' read -r username userpass <<< "${user_entry}"
       if [ -n "${username}" ]; then
-        timeout 5 vpncmd localhost:5555 /SERVER /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD UserCreate "${username}" /GROUP:none /REALNAME:"" /NOTE:"" >/dev/null 2>&1
-        timeout 5 vpncmd localhost:5555 /SERVER /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD UserPasswordSet "${username}" /PASSWORD:"${userpass}" >/dev/null 2>&1
-        echo "[post-init] 用户 ${username} 创建完成"
+        pkill -9 -x vpncmd 2>/dev/null || true
+        if timeout -s KILL 10 vpncmd localhost /SERVER /CSV /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD UserCreate "${username}" /GROUP:none /REALNAME:none /NOTE:none; then
+          timeout -s KILL 10 vpncmd localhost /SERVER /CSV /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD UserPasswordSet "${username}" /PASSWORD:"${userpass}"
+          echo "[post-init] 用户 ${username} 创建完成"
+        else
+          echo "[post-init] ⚠️ 用户 ${username} 创建失败（可能已存在）"
+        fi
       fi
     done
   fi
 
   # 第 4 步：配置 DHCP — 不设默认网关（GW:0.0.0.0），防止路由劫持
   echo "[post-init] 配置 DHCP..."
-  timeout 5 vpncmd localhost:5555 /SERVER /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD DhcpSet \
+  pkill -9 -x vpncmd 2>/dev/null || true
+  timeout -s KILL 10 vpncmd localhost /SERVER /CSV /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD DhcpSet \
     /START:192.168.30.10 /END:192.168.30.200 /MASK:255.255.255.0 /EXPIRE:7200 \
-    /DNS:8.8.8.8 /DNS2:8.8.4.4 /DOMAIN:local /GW:0.0.0.0 /LOG:no /PUSHROUTE:
+    /DNS:8.8.8.8 /DNS2:8.8.4.4 /DOMAIN:local /GW:0.0.0.0 /LOG:no
 
   # 标记初始化完成（供 CI 和 healthcheck 使用）
   touch /tmp/post-init.done

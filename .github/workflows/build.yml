@@ -114,6 +114,15 @@ jobs:
             echo "✅ 端口443已删除"
           fi
 
+      - name: Verify configuration
+        run: |
+          echo "===== 检查Virtual Hub ====="
+          timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CMD HubList
+          timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CSV /CMD EnumHub
+
+          echo "===== 检查用户 ====="
+          timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /HUB:DEFAULT /CMD UserList
+
       - name: Cleanup
         if: always()
         run: |
