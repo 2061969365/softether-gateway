@@ -44,7 +44,6 @@ jobs:
             -e USERS=testuser:testpass123 \
             -e SPW=serverpass123 \
             -e HPW=hubpass123 \
-            -e "VPNCMD_SERVER=ListenerDelete 443" \
             softether-test:latest
 
           echo "===== 等待初始化完成（最多120秒） ====="
@@ -65,39 +64,30 @@ jobs:
           echo "===== 容器日志 ====="
           docker logs softether-test 2>&1
 
-      - name: Configure ports via vpncmd and verify
+      - name: Wait for post-init and verify ports
         run: |
-          echo "===== 检查容器进程 ====="
-          docker exec softether-test ps aux 2>&1 | grep -E "PID|vpnserver|vpncmd" || echo "没有 vpnserver 进程"
-
-          echo "===== 检查 /proc/net/tcp 当前监听端口 ====="
-          docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }' || echo "无法读取"
-
-          echo "===== 等待 vpnserver 就绪后配置端口 ====="
-          for i in $(seq 1 30); do
-            OUTPUT=$(timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CMD ListenerList 2>&1) && {
-              echo "✅ vpnserver 就绪（${i}秒）"
-              echo "✅ vpnserver 就绪（${i}秒）"
-              echo "$OUTPUT"
+          echo "===== 等待 post-init 完成配置 ====="
+          for i in $(seq 1 60); do
+            if docker exec softether-test sh -c "test -f /tmp/post-init.done" 2>/dev/null; then
+              echo "✅ post-init 完成（${i}秒）"
               break
-            }
-            if [ $i -eq 30 ]; then
-              echo "❌ vpnserver 30秒未就绪，最后错误："
-              echo "$OUTPUT"
+            fi
+            if [ $i -eq 60 ]; then
+              echo "❌ post-init 超时"
+              docker logs softether-test 2>&1 | tail -20
               exit 1
             fi
             sleep 1
           done
 
-          echo "===== 删除 992 监听器 ====="
-          timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CMD ListenerDelete 992 || echo "⚠️ 删除 992 失败"
+          echo "===== 检查容器进程 ====="
+          docker exec softether-test ps aux 2>&1 | grep -E "PID|vpnserver|vpncmd" || echo "没有 vpnserver 进程"
 
-          echo "===== 验证删除后监听器 ====="
+          echo "===== 查看监听器列表 ====="
           timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CMD ListenerList
 
           echo "===== 验证监听端口 ====="
           LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
-          echo "当前LISTEN端口:"
           echo "$LISTEN_PORTS"
 
           # 5555 必须在
@@ -116,7 +106,7 @@ jobs:
             echo "✅ 端口992已删除"
           fi
 
-          # 443 不能存在（VPNCMD_SERVER 删掉的）
+          # 443 不能存在
           if echo "$LISTEN_PORTS" | grep -q "^01BB$"; then
             echo "❌ 端口443(0x01BB)仍在LISTEN状态"
             exit 1
