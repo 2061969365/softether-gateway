@@ -3,15 +3,14 @@
 #
 # 注意：
 # - vpncmd 必须加 /CSV 参数，否则某些命令会进入交互模式 hang 住
-# - 用 localhost（不加端口）优先走 IPC Unix 套接字，无需 TCP 端口
 # - 使用 timeout -s KILL 确保子进程被强制杀死
 
 (
   echo "[post-init] 等待 vpnserver 就绪..."
 
-  # 第 1 步：等待 vpnserver 启动（IPC 连接，不加端口）
+  # 第 1 步：等待 vpnserver 启动（用端口 5555 + 密码连接）
   for i in $(seq 1 30); do
-    if timeout -s KILL 10 vpncmd localhost /SERVER /CSV /CMD ListenerList >/dev/null 2>&1; then
+    if timeout -s KILL 10 vpncmd localhost:5555 /SERVER /CSV /PASSWORD:"${SPW}" /CMD ListenerList >/dev/null 2>&1; then
       echo "[post-init] vpnserver 就绪（${i}秒）"
       break
     fi
@@ -27,10 +26,10 @@
 
   # 第 2 步：删 443/992 监听器（给 3x-ui 让路）
   echo "[post-init] 删除端口 443..."
-  timeout -s KILL 10 vpncmd localhost /SERVER /CSV /PASSWORD:"${SPW}" /CMD ListenerDelete 443
+  timeout -s KILL 10 vpncmd localhost:5555 /SERVER /CSV /PASSWORD:"${SPW}" /CMD ListenerDelete 443
 
   echo "[post-init] 删除端口 992..."
-  timeout -s KILL 10 vpncmd localhost /SERVER /CSV /PASSWORD:"${SPW}" /CMD ListenerDelete 992
+  timeout -s KILL 10 vpncmd localhost:5555 /SERVER /CSV /PASSWORD:"${SPW}" /CMD ListenerDelete 992
 
   # 第 3 步：创建用户（USERS 格式：user1:pass1;user2:pass2）
   if [ -n "${USERS}" ]; then
@@ -40,8 +39,8 @@
       IFS=':' read -r username userpass <<< "${user_entry}"
       if [ -n "${username}" ]; then
         pkill -9 -x vpncmd 2>/dev/null || true
-        if timeout -s KILL 10 vpncmd localhost /SERVER /CSV /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD UserCreate "${username}" /GROUP:none /REALNAME:none /NOTE:none; then
-          timeout -s KILL 10 vpncmd localhost /SERVER /CSV /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD UserPasswordSet "${username}" /PASSWORD:"${userpass}"
+        if timeout -s KILL 10 vpncmd localhost:5555 /SERVER /CSV /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD UserCreate "${username}" /GROUP:none /REALNAME:none /NOTE:none; then
+          timeout -s KILL 10 vpncmd localhost:5555 /SERVER /CSV /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD UserPasswordSet "${username}" /PASSWORD:"${userpass}"
           echo "[post-init] 用户 ${username} 创建完成"
         else
           echo "[post-init] ⚠️ 用户 ${username} 创建失败（可能已存在）"
@@ -53,7 +52,7 @@
   # 第 4 步：配置 DHCP — 不设默认网关（GW:0.0.0.0），防止路由劫持
   echo "[post-init] 配置 DHCP..."
   pkill -9 -x vpncmd 2>/dev/null || true
-  timeout -s KILL 10 vpncmd localhost /SERVER /CSV /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD DhcpSet \
+  timeout -s KILL 10 vpncmd localhost:5555 /SERVER /CSV /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD DhcpSet \
     /START:192.168.30.10 /END:192.168.30.200 /MASK:255.255.255.0 /EXPIRE:7200 \
     /DNS:8.8.8.8 /DNS2:8.8.4.4 /DOMAIN:local /GW:0.0.0.0 /LOG:no
 
