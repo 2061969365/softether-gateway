@@ -67,21 +67,26 @@ jobs:
 
       - name: Configure ports via vpncmd and verify
         run: |
+          echo "===== 检查容器进程 ====="
+          docker exec softether-test ps aux 2>&1 | grep -E "PID|vpnserver|vpncmd" || echo "没有 vpnserver 进程"
+
+          echo "===== 检查 /proc/net/tcp 当前监听端口 ====="
+          docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }' || echo "无法读取"
+
           echo "===== 等待 vpnserver 就绪后配置端口 ====="
           for i in $(seq 1 30); do
-            if docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerList >/dev/null 2>&1; then
+            OUTPUT=$(docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerList 2>&1) && {
               echo "✅ vpnserver 就绪（${i}秒）"
+              echo "$OUTPUT"
               break
-            fi
+            }
             if [ $i -eq 30 ]; then
-              echo "❌ vpnserver 30秒未就绪"
+              echo "❌ vpnserver 30秒未就绪，最后错误："
+              echo "$OUTPUT"
               exit 1
             fi
             sleep 1
           done
-
-          echo "===== 当前监听器 ====="
-          docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerList
 
           echo "===== 删除 992 监听器 ====="
           docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerDelete 992 || echo "⚠️ 删除 992 失败"
