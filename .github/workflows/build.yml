@@ -75,7 +75,7 @@ jobs:
 
           echo "===== 等待 vpnserver 就绪后配置端口 ====="
           for i in $(seq 1 30); do
-            OUTPUT=$(docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerList 2>&1) && {
+            OUTPUT=$(docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CMD ListenerList 2>&1) && {
               echo "✅ vpnserver 就绪（${i}秒）"
               echo "$OUTPUT"
               break
@@ -89,13 +89,10 @@ jobs:
           done
 
           echo "===== 删除 992 监听器 ====="
-          docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerDelete 992 || echo "⚠️ 删除 992 失败"
+          docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CMD ListenerDelete 992 || echo "⚠️ 删除 992 失败"
 
-          echo "===== 创建 5555 监听器 ====="
-          docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerCreate 5555 || echo "⚠️ 创建 5555 失败"
-
-          echo "===== 配置后监听器 ====="
-          docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CMD ListenerList
+          echo "===== 验证删除后监听器 ====="
+          docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CMD ListenerList
 
           echo "===== 验证监听端口 ====="
           LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
@@ -129,7 +126,7 @@ jobs:
       - name: Verify Virtual Hub and user exist
         run: |
           echo "===== 检查Hub和用户 ====="
-          HUB_LIST=$(docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /CSV /CMD EnumHub 2>&1)
+          HUB_LIST=$(docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CSV /CMD EnumHub 2>&1)
           echo "Hub列表: $HUB_LIST"
           if echo "$HUB_LIST" | grep -q "DEFAULT"; then
             echo "✅ Virtual Hub DEFAULT 存在"
@@ -138,7 +135,7 @@ jobs:
             exit 1
           fi
 
-          USER_LIST=$(docker exec softether-test vpncmd localhost /SERVER /PASSWORD:serverpass123 /HUB:DEFAULT /CSV /CMD UserList 2>&1)
+          USER_LIST=$(docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /HUB:DEFAULT /CSV /CMD UserList 2>&1)
           echo "用户列表: $USER_LIST"
           if echo "$USER_LIST" | grep -q "testuser"; then
             echo "✅ 用户 testuser 存在"
