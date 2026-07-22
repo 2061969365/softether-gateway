@@ -65,27 +65,13 @@ jobs:
           echo "===== 容器日志 ====="
           docker logs softether-test 2>&1
 
-      - name: Wait for port changes (post-init.sh)
+      - name: Verify ports
         run: |
-          echo "===== 等待 post-init 完成端口变更 ====="
-          for i in $(seq 1 30); do
-            LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
-            if ! echo "$LISTEN_PORTS" | grep -q "03E0" && echo "$LISTEN_PORTS" | grep -q "15B3"; then
-              echo "✅ 端口变更完成（${i}秒）：5555已监听，992已删除"
-              break
-            fi
-            if [ $i -eq 30 ]; then
-              echo "❌ 超时30秒，当前监听端口："
-              echo "$LISTEN_PORTS"
-              exit 1
-            fi
-            sleep 1
-          done
-
-      - name: Verify port 5555 is listening
-        run: |
-          echo "===== 检查端口5555 ====="
+          echo "===== 检查监听端口 ====="
           LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
+          echo "当前LISTEN端口: $LISTEN_PORTS"
+
+          # 5555 必须在（新监听器）
           if echo "$LISTEN_PORTS" | grep -q "^15B3$"; then
             echo "✅ 端口5555(0x15B3)已监听"
           else
@@ -93,15 +79,20 @@ jobs:
             exit 1
           fi
 
-      - name: Verify 992 is NOT listening
-        run: |
-          echo "===== 检查992已删除 ====="
-          LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
+          # 992 不能存在
           if echo "$LISTEN_PORTS" | grep -q "^03E0$"; then
-            echo "❌ 端口992仍在LISTEN状态"
+            echo "❌ 端口992(0x03E0)仍在LISTEN状态"
             exit 1
           else
-            echo "✅ 端口992已成功删除"
+            echo "✅ 端口992已删除"
+          fi
+
+          # 443 不能存在
+          if echo "$LISTEN_PORTS" | grep -q "^01BB$"; then
+            echo "❌ 端口443(0x01BB)仍在LISTEN状态"
+            exit 1
+          else
+            echo "✅ 端口443已删除"
           fi
 
       - name: Verify Virtual Hub and user exist
