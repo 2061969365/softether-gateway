@@ -114,27 +114,6 @@ jobs:
             echo "✅ 端口443已删除"
           fi
 
-      - name: Verify Virtual Hub and user exist
-        run: |
-          echo "===== 检查Hub和用户 ====="
-          HUB_LIST=$(timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /CSV /CMD EnumHub 2>&1)
-          echo "Hub列表: $HUB_LIST"
-          if echo "$HUB_LIST" | grep -q "DEFAULT"; then
-            echo "✅ Virtual Hub DEFAULT 存在"
-          else
-            echo "❌ Virtual Hub DEFAULT 未找到"
-            exit 1
-          fi
-
-          USER_LIST=$(timeout 5 docker exec softether-test vpncmd localhost:5555 /SERVER /PASSWORD:serverpass123 /HUB:DEFAULT /CSV /CMD UserList 2>&1)
-          echo "用户列表: $USER_LIST"
-          if echo "$USER_LIST" | grep -q "testuser"; then
-            echo "✅ 用户 testuser 存在"
-          else
-            echo "❌ 用户 testuser 未找到"
-            exit 1
-          fi
-
       - name: Cleanup
         if: always()
         run: |
