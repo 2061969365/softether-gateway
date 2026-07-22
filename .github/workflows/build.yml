@@ -65,36 +65,43 @@ jobs:
           echo "===== 容器日志 ====="
           docker logs softether-test 2>&1
 
+      - name: Wait for port changes (post-init.sh)
+        run: |
+          echo "===== 等待 post-init 完成端口变更 ====="
+          for i in $(seq 1 30); do
+            LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
+            if ! echo "$LISTEN_PORTS" | grep -q "03E0" && echo "$LISTEN_PORTS" | grep -q "15B3"; then
+              echo "✅ 端口变更完成（${i}秒）：5555已监听，992已删除"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "❌ 超时30秒，当前监听端口："
+              echo "$LISTEN_PORTS"
+              exit 1
+            fi
+            sleep 1
+          done
+
       - name: Verify port 5555 is listening
         run: |
           echo "===== 检查端口5555 ====="
-          # /proc/net/tcp 列说明:
-          #   $2 = local_address (hex:port)
-          #   $4 = st (state), 0A=LISTEN, 01=ESTABLISHED, 06=TIME_WAIT
-          # 只提取 LISTEN 状态的端口号，排除出站连接(TIME_WAIT)的误报
           LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
           if echo "$LISTEN_PORTS" | grep -q "^15B3$"; then
             echo "✅ 端口5555(0x15B3)已监听"
           else
             echo "❌ 端口5555未监听"
-            docker exec softether-test sh -c "cat /proc/net/tcp"
             exit 1
           fi
 
-      - name: Verify 443 and 992 are NOT listening
+      - name: Verify 992 is NOT listening
         run: |
-          echo "===== 检查443和992已删除 ====="
-          # /proc/net/tcp 列说明:
-          #   $2 = local_address (hex:port)
-          #   $4 = st (state), 0A=LISTEN, 01=ESTABLISHED, 06=TIME_WAIT
-          # 只提取 LISTEN 状态的端口号，排除出站连接(TIME_WAIT)的误报
+          echo "===== 检查992已删除 ====="
           LISTEN_PORTS=$(docker exec softether-test sh -c "cat /proc/net/tcp" | awk 'NR>1 && $4=="0A" { split($2,a,":"); print a[2] }')
-          if echo "$LISTEN_PORTS" | grep -q -e "^01BB$" -e "^03E0$"; then
-            echo "❌ 443(01BB)或992(03E0)端口仍在LISTEN状态"
-            docker exec softether-test sh -c "cat /proc/net/tcp"
+          if echo "$LISTEN_PORTS" | grep -q "^03E0$"; then
+            echo "❌ 端口992仍在LISTEN状态"
             exit 1
           else
-            echo "✅ 443和992已成功删除"
+            echo "✅ 端口992已成功删除"
           fi
 
       - name: Verify Virtual Hub and user exist

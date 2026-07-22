@@ -11,12 +11,18 @@
       echo "[post-init] vpnserver 就绪，执行剩余配置..."
 
       # 删除 992 监听器（siomiz 的 VPNCMD_SERVER bug 导致这步被跳过）
-      vpncmd localhost /SERVER /PASSWORD:"${SPW}" /CMD ListenerDelete 992
-      echo "[post-init] ListenerDelete 992 done"
+      if vpncmd localhost /SERVER /PASSWORD:"${SPW}" /CMD ListenerDelete 992; then
+        echo "[post-init] ✅ ListenerDelete 992 done"
+      else
+        echo "[post-init] ⚠️ ListenerDelete 992 失败"
+      fi
 
       # 创建 5555 监听器（同样被 bug 跳过）
-      vpncmd localhost /SERVER /PASSWORD:"${SPW}" /CMD ListenerCreate 5555
-      echo "[post-init] ListenerCreate 5555 done"
+      if vpncmd localhost /SERVER /PASSWORD:"${SPW}" /CMD ListenerCreate 5555; then
+        echo "[post-init] ✅ ListenerCreate 5555 done"
+      else
+        echo "[post-init] ⚠️ ListenerCreate 5555 失败"
+      fi
 
       # DHCP 配置：不推默认网关（同样被 siomiz 的 VPNCMD_HUB bug 导致后面的参数被跳过）
       vpncmd localhost /SERVER /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD DhcpSet \
