@@ -1,14 +1,16 @@
 #!/bin/bash
 # post-init.sh — 后台完整初始化 SoftEther VPN Server
-# 由于 siomiz entrypoint 的 ExtOptionSet 会杀死 vpnserver 进程，
-# 导致 SPW/USERS/VPNCMD 等环境变量全部不生效，所以所有配置都在此完成。
+#
+# 由于 entrypoint 的 ExtOptionSet 导致 vpnserver 短暂重启，
+# 用户创建可能失败，由本脚本补完剩余配置。
+# 密码设置因 VPNCMD_SERVER 已移除而正常工作，使用端口 5555 连接。
 
 (
   echo "[post-init] 等待 vpnserver 就绪..."
 
-  # 第 1 步：等待 vpnserver 启动（连接无密码模式，因为 entrypoint 没设上密码）
+  # 第 1 步：等待 vpnserver 启动（用端口 5555 + 密码连接）
   for i in $(seq 1 30); do
-    if timeout 5 vpncmd localhost:5555 /SERVER /CMD ListenerList >/dev/null 2>&1; then
+    if timeout 5 vpncmd localhost:5555 /SERVER /PASSWORD:"${SPW}" /CMD ListenerList >/dev/null 2>&1; then
       echo "[post-init] vpnserver 就绪（${i}秒）"
       break
     fi
@@ -19,20 +21,15 @@
     sleep 1
   done
 
-  # 第 2 步：设置管理密码
-  if [ -n "${SPW}" ]; then
-    echo "[post-init] 设置管理密码..."
-    echo "${SPW}" | timeout 5 vpncmd localhost:5555 /SERVER /CMD ServerPasswordSet
-  fi
-
-  # 第 3 步：配置端口 — 删 443/992，保留 5555
+  # 第 2 步：删 443/992 监听器（给 3x-ui 让路）
   echo "[post-init] 删除端口 443..."
   timeout 5 vpncmd localhost:5555 /SERVER /PASSWORD:"${SPW}" /CMD ListenerDelete 443
 
   echo "[post-init] 删除端口 992..."
   timeout 5 vpncmd localhost:5555 /SERVER /PASSWORD:"${SPW}" /CMD ListenerDelete 992
 
-  # 第 4 步：创建用户（USERS 格式：user1:pass1;user2:pass2）
+  # 第 3 步：创建用户（USERS 格式：user1:pass1;user2:pass2）
+  # entrypoint 的 ExtOptionSet 会导致用户创建失败，这里补建
   if [ -n "${USERS}" ]; then
     echo "[post-init] 创建用户..."
     IFS=';' read -ra USER_LIST <<< "${USERS}"
@@ -46,7 +43,7 @@
     done
   fi
 
-  # 第 5 步：配置 DHCP — 不设默认网关（GW:0.0.0.0），防止路由劫持
+  # 第 4 步：配置 DHCP — 不设默认网关（GW:0.0.0.0），防止路由劫持
   echo "[post-init] 配置 DHCP..."
   timeout 5 vpncmd localhost:5555 /SERVER /HUB:DEFAULT /PASSWORD:"${SPW}" /CMD DhcpSet \
     /START:192.168.30.10 /END:192.168.30.200 /MASK:255.255.255.0 /EXPIRE:7200 \
